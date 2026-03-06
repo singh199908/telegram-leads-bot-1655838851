@@ -1,15 +1,28 @@
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 import uuid
+import threading
+import os
+from flask import Flask
 
-# Replace 'YOUR_BOT_TOKEN_HERE' with the token you get from BotFather
+# Replace with your actual bot token
 API_TOKEN = '8792860370:AAHCNwe0F9Lf-B9NoPyCZYpUDF8R5YAjoeA'
 
 bot = telebot.TeleBot(API_TOKEN)
+app = Flask(__name__)
+
+# This dummy web server allows free hosting platforms (like Render) to host your bot without errors.
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+def run_server():
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    # Generate a unique ID for the user (using the first 8 characters of a UUID)
+    # Generate a unique ID for the user
     unique_id = str(uuid.uuid4()).split('-')[0].upper()
     
     welcome_text = (
@@ -43,6 +56,10 @@ def callback_query(call):
         bot.send_message(call.message.chat.id, "🥇 *Gold Plan* selected.\nPrice: 649$\n\nContact the admin to proceed with the payment and receive your leads.", parse_mode="Markdown")
 
 if __name__ == '__main__':
+    # Start the Flask web server in a separate thread
+    server_thread = threading.Thread(target=run_server)
+    server_thread.start()
+    
     print("Bot is running...")
-    # This keeps the bot running infinitely
+    # Keep the bot running infinitely
     bot.infinity_polling()
