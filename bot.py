@@ -5,6 +5,8 @@ import threading
 import os
 from flask import Flask
 
+import json
+
 # Replace with your actual bot token
 API_TOKEN = '8792860370:AAHCNwe0F9Lf-B9NoPyCZYpUDF8R5YAjoeA'
 
@@ -14,6 +16,30 @@ app = Flask(__name__)
 # Dictionary to store users who have redeemed the platinum plan
 premium_users = {}
 all_users = {}
+
+def load_data():
+    global premium_users, all_users
+    try:
+        if os.path.exists('users.json'):
+            with open('users.json', 'r') as f:
+                data = json.load(f)
+                # Convert string keys back to integers for user IDs
+                all_users = {int(k): v for k, v in data.get('all_users', {}).items()}
+                premium_users = {int(k): v for k, v in data.get('premium_users', {}).items()}
+    except Exception as e:
+        print(f"Error loading data: {e}")
+
+def save_data():
+    try:
+        with open('users.json', 'w') as f:
+            json.dump({
+                'all_users': all_users,
+                'premium_users': premium_users
+            }, f)
+    except Exception as e:
+        print(f"Error saving data: {e}")
+
+load_data()
 
 REDEEM_CODE = "8cfxUgwa97t0OaAb3343gaX"
 
@@ -28,16 +54,20 @@ def run_server():
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    unique_id = str(uuid.uuid4()).split('-')[0].upper()
     user_id = message.from_user.id
     
     # Register user
     if user_id not in all_users:
+        # Generate the unique_id ONLY if it's a new user
+        unique_id = str(uuid.uuid4()).split('-')[0].upper()
         all_users[user_id] = {
             "first_name": message.from_user.first_name,
             "username": message.from_user.username,
             "unique_id": unique_id
         }
+        save_data()
+    else:
+        unique_id = all_users[user_id]["unique_id"]
         
     # If user already redeemed the code, skip to the premium menu
     if premium_users.get(user_id):
@@ -77,6 +107,7 @@ def redeem_code(message):
     # Verify the code
     if code == REDEEM_CODE:
         premium_users[user_id] = True
+        save_data()
         bot.send_message(message.chat.id, "✅ *Platinum plan is enabled!*\n\nYou now have access to our premium USA banking leads database.", parse_mode="Markdown")
         show_bank_menu(message.chat.id)
     else:
@@ -93,9 +124,38 @@ def list_users(message):
     for uid, data in all_users.items():
         username = f"@{data['username']}" if data.get('username') else "No Username"
         status = "💎 Premium" if premium_users.get(uid) else "🆓 Free"
-        user_list += f"• ID: {data['unique_id']} | Name: {data.get('first_name')} | {username} | {status}\n"
+        user_list += f"• ID: `{data['unique_id']}` | Name: {data.get('first_name')} | {username} | {status}\n"
         
     bot.send_message(message.chat.id, user_list, parse_mode="Markdown")
+
+@bot.message_handler(commands=['sendfile'])
+def send_file_to_user(message):
+    # Command format: /sendfile <unique_id>
+    args = message.text.split()
+    if len(args) < 2:
+        bot.send_message(message.chat.id, "⚠️ *Error:* Please provide a valid User ID.\n\nExample: `/sendfile 31B1A13B`", parse_mode="Markdown")
+        return
+        
+    target_unique_id = args[1].upper()
+    target_chat_id = None
+    
+    # Find the real chat ID from the unique ID
+    for uid, data in all_users.items():
+        if data.get("unique_id") == target_unique_id:
+            target_chat_id = uid
+            break
+            
+    if not target_chat_id:
+        bot.send_message(message.chat.id, f"❌ Could not find a user with ID: {target_unique_id}")
+        return
+        
+    # Send the file
+    try:
+        with open('filtered_data.xlsx', 'rb') as file:
+            bot.send_document(target_chat_id, file, caption="📊 Here are your premium filtered banking leads as requested!")
+        bot.send_message(message.chat.id, f"✅ Successfully sent the Excel file to User ID: {target_unique_id}")
+    except Exception as e:
+        bot.send_message(message.chat.id, f"❌ Failed to send file. Error: {str(e)}")
 
 def show_bank_menu(chat_id):
     menu_text = "🏦 *Premium USA Banks Database*\n\nPlease select a bank to view available leads:"
