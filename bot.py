@@ -13,6 +13,7 @@ app = Flask(__name__)
 
 # Dictionary to store users who have redeemed the platinum plan
 premium_users = {}
+all_users = {}
 
 REDEEM_CODE = "8cfxUgwa97t0OaAb3343gaX"
 
@@ -30,6 +31,14 @@ def send_welcome(message):
     unique_id = str(uuid.uuid4()).split('-')[0].upper()
     user_id = message.from_user.id
     
+    # Register user
+    if user_id not in all_users:
+        all_users[user_id] = {
+            "first_name": message.from_user.first_name,
+            "username": message.from_user.username,
+            "unique_id": unique_id
+        }
+        
     # If user already redeemed the code, skip to the premium menu
     if premium_users.get(user_id):
         show_bank_menu(message.chat.id)
@@ -72,6 +81,21 @@ def redeem_code(message):
         show_bank_menu(message.chat.id)
     else:
         bot.send_message(message.chat.id, "❌ *Invalid code!* Please check your access code and try again.", parse_mode="Markdown")
+
+@bot.message_handler(commands=['users'])
+def list_users(message):
+    # This shows the list of all users who used the bot
+    if not all_users:
+        bot.send_message(message.chat.id, "No users have started the bot yet.")
+        return
+        
+    user_list = "👥 *Registered Users:*\n\n"
+    for uid, data in all_users.items():
+        username = f"@{data['username']}" if data.get('username') else "No Username"
+        status = "💎 Premium" if premium_users.get(uid) else "🆓 Free"
+        user_list += f"• ID: {data['unique_id']} | Name: {data.get('first_name')} | {username} | {status}\n"
+        
+    bot.send_message(message.chat.id, user_list, parse_mode="Markdown")
 
 def show_bank_menu(chat_id):
     menu_text = "🏦 *Premium USA Banks Database*\n\nPlease select a bank to view available leads:"
